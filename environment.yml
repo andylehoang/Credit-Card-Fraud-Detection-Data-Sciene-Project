@@ -1,36 +1,45 @@
-name: fraud-detection
+name: fraud-detection-legacy
 channels:
+  - rapidsai
+  - nvidia
   - conda-forge
   - defaults
 dependencies:
-  # Python
-  - python=3.12
+  # Python - Downgraded for RAPIDS 23.12 compatibility
+  - python=3.10
 
-  # Core data science
-  - numpy=2.1
-  - pandas=2.2
-  - scipy=1.14
+  # Core data science - Downgraded to match RAPIDS 23.12 constraints
+  - numpy<2.0
+  - pandas<2.0
+  - scipy=1.10
 
   # Visualization
-  - matplotlib=3.10
-  - seaborn=0.13
-  - plotly=5.24
+  - matplotlib=3.7
+  - seaborn=0.12
+  - plotly=5.18
 
   # Machine Learning
-  - scikit-learn=1.6
-  - imbalanced-learn=0.12
+  - scikit-learn=1.3
+  - imbalanced-learn=0.11
+
+  # GPU-accelerated ML (RAPIDS) - Integrated into the file
+  - cudf=23.12
+  - cuml=23.12
+  - cuda-version=11.2
 
   # Jupyter ecosystem
-  - jupyter=1.1
-  - notebook=7.3
-  - ipykernel=6.29
+  - jupyter=1.0
+  - notebook=6.5
+  - ipykernel=6.25
 
   # Utilities
-  - joblib=1.4
-  - tqdm=4.67
+  - joblib=1.3
+  - tqdm=4.66
   - openpyxl=3.1
 
-  # TensorFlow (pip required - conda-forge is outdated on Windows)
+  # TensorFlow
   - pip
   - pip:
-      - tensorflow==2.20.0
+      - tensorflow==2.11.0
+      - tensorflow-gpu==2.11.0
+

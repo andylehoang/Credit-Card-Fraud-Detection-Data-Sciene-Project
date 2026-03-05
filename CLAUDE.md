@@ -13,7 +13,7 @@ conda env create -f environment.yml
 conda activate fraud-detection
 ```
 
-Key dependencies: Python 3.12, pandas 2.2, scikit-learn 1.6, imbalanced-learn 0.12, TensorFlow 2.20.0 (pip-installed), plotly 5.24, seaborn 0.13.
+Key dependencies: Python 3.12, pandas 2.2, scikit-learn 1.6, imbalanced-learn 0.12, TensorFlow 2.20.0 with CUDA (pip-installed), cuML/cuDF 25.02 (RAPIDS, conda), plotly 5.24, seaborn 0.13.
 
 ## Running the Notebook
 
@@ -44,4 +44,9 @@ The intended pipeline (from imports in notebook.ipynb):
 
 ## Current State
 
-The project is in early scaffolding stage. Only 2 notebook cells exist: imports (working) and a broken Kaggle download cell (empty `file_path`). No preprocessing, modeling, or evaluation code has been written yet.
+The notebook has a complete ML pipeline (~34 cells):
+1. **EDA & preprocessing** (Steps 1-6): data profiling, imbalance analysis, drift analysis, fraud patterns, leakage checks, feature engineering with StandardScaler
+2. **Classical ML** (Steps 7-11): LogisticRegression and RandomForest baselines with class_weight, SMOTE oversampling, threshold calibration (F1-optimal and recall-85% SLA), hyperparameter tuning, validation checks
+3. **GPU acceleration** (Steps 12-14): TensorFlow GPU config with mixed precision, cuML GPU RandomForest (RAPIDS), Keras DNN with class-weighted training, evaluation comparison table, training history visualization, model persistence
+
+GPU setup requires `tensorflow[and-cuda]` (pip) and `cuml`/`cudf` (conda from rapidsai channel). CUDA is expected to be installed system-wide.

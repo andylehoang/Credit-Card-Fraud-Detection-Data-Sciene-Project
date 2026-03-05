@@ -1,8 +1,13 @@
 {
-  "outputStyle": "Learning",
   "permissions": {
     "allow": [
-      "Bash(/c/Users/xxx/miniconda3/envs/fraud-detection/python.exe:*)"
+      "Bash(/c/Users/xxx/miniconda3/envs/fraud-detection/python.exe:*)",
+      "Bash(python3:*)",
+      "Bash(where python)",
+      "Read(//c/Users/benth/**)",
+      "Bash(ls:*)",
+      "Bash(cmd.exe:*)"
     ]
-  }
+  },
+  "outputStyle": "Learning"
 }
