@@ -30,12 +30,55 @@ The notebook uses the `fraud-detection` conda environment kernel (`python3`).
 ## Notebook Steps (Implemented)
 
 ### Step 1 — Data Profiling
+> 📌 **For Samuel**
+
+**What is a CSV?** A CSV (Comma-Separated Values) file is a spreadsheet saved as plain text — each row is a transaction, each column is one piece of information about it. Python's pandas library loads a CSV into a **DataFrame**: a table you can slice, filter, and analyse in code.
+
+**Shape (rows × columns):** `df.shape` returns two numbers. `(1,296,675, 22)` means 1,296,675 transaction rows and 22 columns of information each. The test set has 555,719 rows — roughly a 70/30 train-test split.
+
+**Null values** are missing entries in the table. A null forces you to guess or fill in a value before modelling, which introduces assumptions. Zero nulls here means the data is complete — no guessing required.
+
+**Temporal split:** The training data ends before the test data begins. This mirrors the real world: you train on past transactions and predict future ones. If past and future data were mixed, the model could accidentally "see" future information during training and report unrealistically good results — a mistake called **data leakage**. The `assert` statement in the code enforces this automatically.
+
 Loads train/test CSVs and runs structural health checks: shape, schema equality, null counts, fraud rate per split, and temporal holdout validation (all train timestamps must precede all test timestamps).
 
 ### Step 2 — Class Imbalance Analysis
-Quantifies fraud rarity: counts, rates, and imbalance ratio per split. Documents the modeling implication: accuracy is not a useful metric; use precision-recall metrics instead.
+> 📌 **For Samuel**
+
+Quantifies fraud rarity: counts, rates, and imbalance ratio per split.
+
+**Key finding:** 171 legitimate transactions for every 1 fraud case — a 171:1 imbalance. This single fact shapes every metric choice in the project.
+
+#### Why accuracy is useless here
+A model that always predicts "not fraud" is **99.4% accurate** and catches zero criminals. Accuracy counts all correct predictions equally, so it rewards the lazy strategy of ignoring the rare class entirely.
+
+#### ROC-AUC — are fraud cases ranked higher than legit cases?
+ROC-AUC answers one question: *"If I pick one fraud and one legitimate transaction at random, how often does the model assign the fraud a higher risk score?"*
+- Score = **1.0** → perfect ranking every time
+- Score = **0.5** → random (coin-flip level)
+- Our result: **0.9877** — the model ranks fraud above legit 98.8% of the time
+
+ROC-AUC sounds great, but it has a hidden problem for imbalanced data: it counts both classes equally. With 553,574 legitimate cases, even a weak model can get most of the "legitimate ranked below fraud" comparisons right just by luck. It tells you the model is *ordering* well, but not whether it is actually *useful* for finding fraud.
+
+#### PR-AUC — how useful is the model when it flags something?
+PR-AUC (Precision-Recall Area Under Curve) is the primary metric here. It only looks at the fraud class and asks two questions simultaneously:
+
+- **Precision:** Of all transactions the model flagged as fraud, what fraction were real fraud? *(Are my alerts worth investigating?)*
+- **Recall:** Of all actual fraud transactions, what fraction did the model catch? *(Am I missing criminals?)*
+
+PR-AUC measures how well the model balances these two questions across *every possible decision threshold* — not just a single cutoff. A higher PR-AUC means the model is genuinely better at finding fraud without drowning investigators in false alarms.
+
+Our result: **PR-AUC = 0.8835** — meaning 88% of the area under the precision-recall curve is covered. For a dataset where fraud is 0.58% of all transactions, this is strong performance; a random classifier would score approximately 0.006 (the fraud rate itself).
 
 ### Step 3 — Drift Analysis (Train vs Test)
+> 📌 **For Samuel**
+
+**What is a "distribution"?** A distribution is the shape of a feature's values. For example, most `amt` (transaction amount) values cluster under $100, but a few spike up to $28,000. That pattern — how values are spread across the range — is the distribution.
+
+**What is drift?** Drift is when that shape changes between training and test data. Imagine the model learned that "most transactions are under $50" from winter training data. If the test set covers holiday shopping where $200+ purchases are common, the model is now operating in a different world than it trained on. Rules learned from one period may not apply to another.
+
+**Why it matters:** A model deployed into a shifted distribution makes systematically wrong predictions — and may not fail loudly. Drift analysis catches this before deployment. In this project, the only high-drift feature is `unix_time` (PSI = 11.51), which is expected: timestamps naturally advance over time. All meaningful features (amounts, categories, locations) are stable.
+
 Detects distribution changes between training and deployment periods using PSI (Population Stability Index) for numeric features and share-shift tables for categoricals.
 
 | PSI | Risk |
@@ -45,9 +88,18 @@ Detects distribution changes between training and deployment periods using PSI (
 | ≥ 0.25 | High |
 
 ### Step 4 — Fraud Pattern Mining
+> 📌 **For Samuel**
+
+**Why mine patterns before training?** This step comes deliberately *before* building any model. If the model later claims `amt` is the most important feature but this EDA step shows $1,000+ transactions are 41× more likely to be fraud, those two findings should agree. Pattern mining gives you a ground truth to validate model decisions against.
+
+**What is lift?** Lift measures how much more likely fraud is in a specific group compared to the overall average. A lift of 41× for the "$1,000+" amount band means transactions in that range are 41 times more likely to be fraud than a randomly chosen transaction. Lift of 1× = average risk. Lift > 1 = elevated risk.
+
+**What is an interaction hotspot?** Some features are only dangerous in combination. The `misc_net` merchant category alone has a 2.5× lift — modestly risky. But `misc_net` transactions at hour 23 (11 PM) have a 45× lift — far more dangerous than either feature predicts on its own. These combined signals are exactly what tree-based models like Random Forest are designed to detect.
+
 Computes fraud lift tables by `category`, `hour`, `amt_band`, and `category × hour` interaction hotspots. Lift > 1 means a group is riskier than the global baseline. High-lift + high-support groups become candidate features.
 
 ### Step 5 — Leakage and Proxy-Risk Analysis
+> 📌 **For Samuel**
 
 **What is leakage?**
 Leakage means a feature contains information that would not be available at the moment of making a real prediction. For example, if a field only has a value *after* fraud is confirmed, using it in training produces inflated accuracy that disappears in production.
@@ -66,6 +118,7 @@ Each column is classified with a risk level and a recommended action:
 ---
 
 ### Step 6 — Feature Strategy Decision
+> 📌 **For Samuel**
 
 This step translates the risk assessment from Step 5 into a **concrete, named policy** that all downstream cells share. Rather than each cell making its own drop/keep decisions, one authoritative set of constants is defined here.
 
@@ -109,6 +162,7 @@ city_pop             →  keep_raw             →  numeric, scaled
 ---
 
 ### Step 7 — Feature Engineering
+> 📌 **For Samuel**
 
 **Function:** `engineer_features(df)` — takes a raw DataFrame and returns a transformed copy. Applies identically to both train and test to guarantee the same schema.
 
@@ -165,6 +219,7 @@ is_fraud               →  is_fraud                   (target, unchanged)
 ---
 
 ### Step 7b — Encoding and Scaling
+> 📌 **For Samuel**
 
 This cell converts the engineered DataFrame into model-ready NumPy arrays.
 
@@ -241,6 +296,23 @@ A 1D NumPy array of length ~555K. Each value is P(fraud) ∈ [0, 1]. Values near
 | `alert_rate_at_0_5` | Fraction of all test transactions flagged |
 
 **Selection rule:** the model with the highest `pr_auc` is forwarded to Step 9 as `best_model`.
+
+#### What the results mean for our fraud use case
+
+The winning model, `rf_balanced`, produced these results on the held-out test set (555,719 transactions, 2,145 real frauds):
+
+| Metric | Value | Plain-English meaning |
+|--------|-------|----------------------|
+| ROC-AUC | 0.9877 | Ranks a random fraud above a random legit transaction 98.8% of the time |
+| **PR-AUC** | **0.8835** | Primary metric — strong precision-recall balance across all thresholds |
+| Precision (at 0.5) | 95.8% | When the model raises an alert, it is correct 19 times out of 20 |
+| Recall (at 0.5) | 72.7% | Catches ~1,560 of the 2,145 real fraud cases; misses ~585 |
+| Daily alerts | 1,628 | Number of transactions flagged per test-period day for investigators |
+
+**What this means in practice:**
+- A fraud investigator reviewing each alert would find real fraud in 19 out of 20 cases — very few wasted calls.
+- About 1 in 4 real frauds slips through undetected at the default threshold of 0.5. Step 9 (threshold calibration) addresses this: by lowering the threshold to 0.303, the model catches 85% of fraud at the cost of more (but still manageable) false alerts.
+- Logistic Regression was tested but scored PR-AUC = 0.145 — it cannot capture the non-linear fraud patterns (e.g., "high amount + late night + online category = fraud") that Random Forest handles naturally through feature interactions.
 
 ---
 
