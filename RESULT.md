@@ -19,7 +19,7 @@
 | 7 | Trained optimized Random Forest | RF with depth limits trains in minutes, PR-AUC 0.8835 |
 | 8 | Tested SMOTE oversampling | PR-AUC dropped 1.8 pp → SMOTE removed |
 | 9 | Threshold calibration | Two operating points: F1-optimal (0.527) and Recall-85% SLA (0.303) |
-| 10 | Hyperparameter tuning (RandomizedSearchCV) | rf_tuned: PR-AUC 0.8628, recall 79.6% |
+| 10 | Hyperparameter tuning (manual selection) | rf_tuned: PR-AUC 0.8628, recall 79.6% |
 | 11 | Validation, overfitting check, feature importance | amt 56.6%, hour 20.5%, category 11.4% |
 | 12–14 | GPU configuration, cuML RF, Keras DNN | Architecture ready; metrics TBD from GPU run |
 
@@ -382,7 +382,7 @@ High threshold →  only sure cases   →  miss some fraud    (low recall, high 
 
 ## Step 10 — Hyperparameter Tuning
 
-Parameters are what the model *learns* from data (split conditions in each tree). *Hyper*parameters are what *you* set before training: how many trees to build, how deep they grow, how many features to consider at each node. This step searches for the best hyperparameter combination.
+Parameters are what the model *learns* from data (split conditions in each tree). *Hyper*parameters are what *you* set before training: how many trees to build, how deep they grow, how many features to consider at each node. This step manually selects hyperparameters and trains a tuned model to compare against the baseline.
 
 ### What the cell printed
 ```
@@ -391,13 +391,21 @@ Parameters are what the model *learns* from data (split conditions in each tree)
 1     rf_smote  0.865872       0.790             0.860                1969
 2     rf_tuned  0.862819       0.796             0.840                2033
 
-Best params: n_estimators=300, max_depth=30, min_samples_leaf=2, max_features="sqrt"
+Selected params: n_estimators=300, max_depth=30, min_samples_leaf=2, max_features="sqrt"
 ```
 
 ### What it means
 
-**How RandomizedSearchCV works:**
-Instead of exhaustively testing every combination of hyperparameters (which could take days), `RandomizedSearchCV` randomly samples 20 combinations from the specified ranges, trains each on a 20% subsample of the data, and picks the winner by PR-AUC on a cross-validation holdout. The winning parameters are then used to retrain a fresh model on the *full* training set — this two-step pattern (search on subsample, train on full data) keeps search fast while using all available data for the final model.
+**Why manual selection instead of automated search:**
+Automated search tools like `RandomizedSearchCV` would require 20–30+ full model fits. On 1.3 M rows (or 2.6 M after SMOTE), each fit takes several minutes — making a full search impractical on CPU. Instead, the hyperparameters were chosen directly based on known behaviour of Random Forests:
+
+| Hyperparameter | Value | Rationale |
+|---|---|---|
+| `n_estimators` | 300 | More trees = more stable predictions; diminishing returns beyond ~300 |
+| `max_depth` | 30 | Deep enough to capture complex fraud patterns without being unlimited |
+| `min_samples_leaf` | 2 | Light regularisation to avoid memorising single outliers |
+| `max_features` | `"sqrt"` | Classic default — decorrelates trees by limiting features per split |
+| `class_weight` | `"balanced_subsample"` | Per-tree class reweighting on top of SMOTE |
 
 **Why PR-AUC decreased slightly while recall improved:**
 This seems backwards at first. The explanation is a regularisation tradeoff:
@@ -433,13 +441,23 @@ Top feature importances (rf_tuned):
 
 ### What it means
 
-**Overfitting check:**
+**Check 1 — Confusion Matrix:**
+The confusion matrix is a 2×2 grid that shows every possible outcome for every prediction the model made:
+
+|  | Predicted: Legitimate | Predicted: Fraud |
+|---|---|---|
+| **Actual: Legitimate** | True Negative (TN) — correctly cleared | False Positive (FP) — unnecessary alert |
+| **Actual: Fraud** | False Negative (FN) — missed fraud ✗ | True Positive (TP) — caught fraud ✓ |
+
+A metric like PR-AUC compresses all of this into one number — the confusion matrix makes the trade-offs visible in raw counts. For fraud detection the critical cell is **FN (missed fraud)**: each one is a fraudulent transaction that cost the cardholder money. FP (false alerts) have a different cost: analyst time. The calibrated threshold from Step 9 (recall-85% SLA at 0.303) shifts the boundary to push more predictions into "Fraud", reducing FN at the cost of more FP — the confusion matrix lets you see exactly how many cases moved.
+
+**Check 2 — Overfitting:**
 A train PR-AUC of 1.0000 means the model memorised the training data perfectly — it can recall every transaction it was trained on without a single mistake. The test PR-AUC of 0.8628 is lower but still strong. This gap (0.137) is labelled "possible overfit," but it is *manageable* for a Random Forest on a large dataset:
 - Training data has 1.3 M rows — the model has seen an enormous variety of patterns.
 - Fraud patterns in this simulated dataset are consistent, so the model generalises well enough for the test PR-AUC to be high.
 - A train=1.0 is actually *expected* for deep Random Forests — trees can always perfectly split the training leaves. The test score is what matters.
 
-**Feature importance — mean decrease in impurity:**
+**Check 3 — Feature importance (mean decrease in impurity):**
 Each percentage shows how much that feature reduced uncertainty (impurity) across all splits in all trees. A higher number means the model relied on that feature more when making decisions.
 
 - **`amt` at 56.6%** dominates because transaction amount directly separates fraud from normal behaviour — recall from Step 4 that $1,000+ transactions are 41× more likely to be fraud. The model learned this too.
@@ -512,8 +530,8 @@ All pipeline steps are implemented. A summary of decisions made along the way:
 
 - **SMOTE (Step 8)** — tested and removed; PR-AUC dropped 1.8 pp, and `class_weight="balanced_subsample"` handles imbalance more effectively without synthetic data
 - **Threshold calibration (Step 9)** — two operating points: `max_f1` (0.527) for balanced teams, `recall_85` (0.303) for SLA-constrained environments
-- **Hyperparameter tuning (Step 10)** — `RandomizedSearchCV` on 20% subsample, retrained on full SMOTE data; best params: `n_estimators=300`, `max_depth=30`, `min_samples_leaf=2`, `max_features="sqrt"`
-- **Validation (Step 11)** — overfitting gap of 0.137 is manageable; feature importances confirm model learns real fraud signals (amt, hour, category)
+- **Hyperparameter tuning (Step 10)** — manual selection (automated search impractical at 1.3M+ rows); params: `n_estimators=300`, `max_depth=30`, `min_samples_leaf=2`, `max_features="sqrt"`
+- **Validation (Step 11)** — confusion matrix (Check 1), overfitting gap of 0.137 manageable (Check 2); feature importances confirm model learns real fraud signals (Check 3)
 - **GPU & DNN (Steps 12–14)** — architecture implemented and saved; concrete metrics pending GPU runtime
 
 ---
