@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Credit card fraud detection project using the Kaggle "kartik2112/fraud-detection" simulated dataset. The project classifies transactions as fraudulent or legitimate using both classical ML (scikit-learn) and deep learning (TensorFlow/Keras). The notebook and documentation are partly in German.
+Credit card fraud detection project using the Kaggle "kartik2112/fraud-detection" simulated dataset. The project classifies transactions as fraudulent or legitimate using a Random Forest classifier (scikit-learn). The notebook and documentation are partly in German.
 
 ## Environment Setup
 
@@ -13,7 +13,7 @@ conda env create -f environment.yml
 conda activate fraud-detection
 ```
 
-Key dependencies: Python 3.12, pandas 2.2, scikit-learn 1.6, imbalanced-learn 0.12, TensorFlow 2.20.0 with CUDA (pip-installed), cuML/cuDF 25.02 (RAPIDS, conda), plotly 5.24, seaborn 0.13.
+Key dependencies: Python 3.12, pandas 2.2+, scikit-learn 1.5+, plotly 5.20+, seaborn 0.13+.
 
 ## Running the Notebook
 
@@ -28,25 +28,21 @@ The notebook uses the `fraud-detection` conda environment kernel (`python3`).
 - `fraudTrain.csv` (~1.3M rows, 351 MB) and `fraudTest.csv` (~556K rows, 150 MB) are local CSV files in the project root
 - Target column: `is_fraud` (binary: 0=legitimate, 1=fraud)
 - 23 columns including transaction amount (`amt`), merchant `category`, geospatial coordinates (`lat`/`long`, `merch_lat`/`merch_long`), temporal (`trans_date_trans_time`, `unix_time`), and demographic features
-- Highly imbalanced dataset — fraud cases are a small minority; use SMOTE and evaluate with ROC-AUC, not accuracy
+- Highly imbalanced dataset — fraud cases are a small minority; use `class_weight="balanced_subsample"` and evaluate with PR-AUC, not accuracy
 
 ## Architecture & ML Pipeline
 
-The intended pipeline (from imports in notebook.ipynb):
-
 1. **Data loading**: `pd.read_csv()` — the CSV files are already present locally
 2. **EDA**: matplotlib, seaborn, plotly for visualization
-3. **Preprocessing**: `StandardScaler` for feature scaling, encoding for categoricals (`category`, `gender`, `merchant`, `job`)
-4. **Imbalance handling**: `SMOTE` from imbalanced-learn
-5. **Modeling**: scikit-learn classifiers + TensorFlow/Keras neural network
-6. **Evaluation**: `classification_report`, `confusion_matrix`, `roc_auc_score`
-7. **Model persistence**: `joblib` for saving/loading models
+3. **Preprocessing**: `StandardScaler` for numeric features, `LabelEncoder` for low-cardinality categoricals (`category`, `gender`), frequency encoding for high-cardinality (`merchant`, `job`)
+4. **Imbalance handling**: `class_weight="balanced_subsample"` (SMOTE was tested and removed — it decreased PR-AUC)
+5. **Modeling**: Single optimized Random Forest with `max_depth=20`, `min_samples_leaf=50`, `max_samples=0.5`
+6. **Tuning**: `RandomizedSearchCV` on 20% subsample, retrained on full data
+7. **Evaluation**: `classification_report`, `confusion_matrix`, `roc_auc_score`, `average_precision_score`
+8. **Model persistence**: `joblib` for saving/loading models
 
 ## Current State
 
-The notebook has a complete ML pipeline (~34 cells):
-1. **EDA & preprocessing** (Steps 1-6): data profiling, imbalance analysis, drift analysis, fraud patterns, leakage checks, feature engineering with StandardScaler
-2. **Classical ML** (Steps 7-11): LogisticRegression and RandomForest baselines with class_weight, SMOTE oversampling, threshold calibration (F1-optimal and recall-85% SLA), hyperparameter tuning, validation checks
-3. **GPU acceleration** (Steps 12-14): TensorFlow GPU config with mixed precision, cuML GPU RandomForest (RAPIDS), Keras DNN with class-weighted training, evaluation comparison table, training history visualization, model persistence
-
-GPU setup requires `tensorflow[and-cuda]` (pip) and `cuml`/`cudf` (conda from rapidsai channel). CUDA is expected to be installed system-wide.
+The notebook has a complete ML pipeline (~26 cells):
+1. **EDA & preprocessing** (Steps 1-6): data profiling, imbalance analysis, drift analysis, fraud patterns, leakage checks, feature engineering with StandardScaler and frequency encoding
+2. **Classical ML** (Steps 7-11): Optimized RandomForest baseline with class_weight, threshold calibration (F1-optimal and recall-85% SLA), RandomizedSearchCV hyperparameter tuning on subsample, validation checks, model persistence

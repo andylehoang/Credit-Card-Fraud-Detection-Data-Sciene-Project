@@ -6,7 +6,10 @@
       "Bash(where python)",
       "Read(//c/Users/benth/**)",
       "Bash(ls:*)",
-      "Bash(cmd.exe:*)"
+      "Bash(cmd.exe:*)",
+      "Bash(where python3)",
+      "Bash(where conda)",
+      "Read(//c/ProgramData/anaconda3/**)"
     ]
   },
   "outputStyle": "Learning"
