@@ -1,10 +1,20 @@
 import argparse
 import os
+import shutil
 import sys
+from pathlib import Path
 from typing import Iterable, List
 
 import numpy as np
 import pandas as pd
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def resolve_project_path(path_value: str) -> Path:
+    path_obj = Path(path_value)
+    return path_obj if path_obj.is_absolute() else (PROJECT_ROOT / path_obj)
 
 
 def parse_feature_list(raw: str | None) -> List[str] | None:
@@ -80,6 +90,86 @@ def ensure_dir_for_file(path: str) -> None:
         os.makedirs(directory, exist_ok=True)
 
 
+def find_csv_file(dataset_dir: Path, preferred_name: str) -> Path:
+    csv_files = sorted(dataset_dir.glob("*.csv"))
+    if not csv_files:
+        raise FileNotFoundError(f"No CSV files found in dataset directory: {dataset_dir}")
+
+    preferred_lower = preferred_name.lower()
+    exact = [f for f in csv_files if f.name.lower() == preferred_lower]
+    if exact:
+        return exact[0]
+
+    return csv_files[0]
+
+
+def resolve_input_paths(
+    reference_csv: str | None,
+    current_csv: str | None,
+    dataset_dir: str | None,
+    auto_kagglehub: bool,
+    kaggle_dataset: str,
+    data_dir: str,
+) -> tuple[str, str]:
+    if reference_csv and current_csv:
+        resolved_ref = resolve_project_path(reference_csv)
+        resolved_cur = resolve_project_path(current_csv)
+
+        if resolved_ref.exists() and resolved_cur.exists():
+            return str(resolved_ref), str(resolved_cur)
+
+        if not auto_kagglehub and not dataset_dir:
+            return str(resolved_ref), str(resolved_cur)
+
+    resolved_dataset_dir: Path | None = None
+
+    if auto_kagglehub:
+        try:
+            import kagglehub  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError(
+                "kagglehub is not installed. Install it with: pip install kagglehub"
+            ) from exc
+
+        download_path = kagglehub.dataset_download(kaggle_dataset)
+        resolved_dataset_dir = Path(download_path)
+        print(f"Downloaded dataset path: {resolved_dataset_dir}")
+    elif dataset_dir:
+        resolved_dataset_dir = resolve_project_path(dataset_dir)
+
+    if resolved_dataset_dir is None:
+        raise ValueError(
+            "Provide either --reference-csv and --current-csv, or use --dataset-dir, "
+            "or enable --auto-kagglehub."
+        )
+
+    if not resolved_dataset_dir.exists():
+        raise FileNotFoundError(f"Dataset directory not found: {resolved_dataset_dir}")
+
+    ref_path = find_csv_file(resolved_dataset_dir, "fraudTrain.csv")
+    cur_path = find_csv_file(resolved_dataset_dir, "fraudTest.csv")
+
+    data_dir_path = resolve_project_path(data_dir)
+    data_dir_path.mkdir(parents=True, exist_ok=True)
+
+    staged_ref_path = data_dir_path / "fraudTrain.csv"
+    staged_cur_path = data_dir_path / "fraudTest.csv"
+
+    if ref_path.resolve() != staged_ref_path.resolve():
+        shutil.copy2(ref_path, staged_ref_path)
+        print(f"Copied reference file to: {staged_ref_path}")
+    else:
+        print(f"Reference file already in data dir: {staged_ref_path}")
+
+    if cur_path.resolve() != staged_cur_path.resolve():
+        shutil.copy2(cur_path, staged_cur_path)
+        print(f"Copied current file to: {staged_cur_path}")
+    else:
+        print(f"Current file already in data dir: {staged_cur_path}")
+
+    return str(staged_ref_path), str(staged_cur_path)
+
+
 def run_monitoring(
     reference_csv: str,
     current_csv: str,
@@ -130,8 +220,28 @@ def run_monitoring(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="PSI threshold monitoring for fraud features")
-    parser.add_argument("--reference-csv", required=True, help="Path to reference CSV")
-    parser.add_argument("--current-csv", required=True, help="Path to current batch CSV")
+    parser.add_argument("--reference-csv", required=False, help="Path to reference CSV")
+    parser.add_argument("--current-csv", required=False, help="Path to current batch CSV")
+    parser.add_argument(
+        "--dataset-dir",
+        default=None,
+        help="Directory containing fraudTrain.csv and fraudTest.csv (or any CSVs as fallback)",
+    )
+    parser.add_argument(
+        "--auto-kagglehub",
+        action="store_true",
+        help="Download dataset via kagglehub and resolve train/test CSV paths automatically",
+    )
+    parser.add_argument(
+        "--kaggle-dataset",
+        default="kartik2112/fraud-detection",
+        help="Kaggle dataset identifier used with --auto-kagglehub",
+    )
+    parser.add_argument(
+        "--data-dir",
+        default="Data",
+        help="Directory where fraudTrain.csv and fraudTest.csv are stored/staged",
+    )
     parser.add_argument(
         "--features",
         default=None,
@@ -157,6 +267,36 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
+    try:
+        reference_csv, current_csv = resolve_input_paths(
+            reference_csv=args.reference_csv,
+            current_csv=args.current_csv,
+            dataset_dir=args.dataset_dir,
+            auto_kagglehub=args.auto_kagglehub,
+            kaggle_dataset=args.kaggle_dataset,
+            data_dir=args.data_dir,
+        )
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
+        print(str(exc), file=sys.stderr)
+        print(f"Current working directory: {os.getcwd()}", file=sys.stderr)
+        return 1
+
+    if not os.path.exists(reference_csv):
+        print(
+            f"Reference file not found: {reference_csv}\n"
+            f"Current working directory: {os.getcwd()}",
+            file=sys.stderr,
+        )
+        return 1
+
+    if not os.path.exists(current_csv):
+        print(
+            f"Current file not found: {current_csv}\n"
+            f"Current working directory: {os.getcwd()}",
+            file=sys.stderr,
+        )
+        return 1
+
     if args.bins < 2:
         print("--bins must be >= 2", file=sys.stderr)
         return 1
@@ -166,10 +306,12 @@ def main() -> int:
         return 1
 
     features = parse_feature_list(args.features)
+
+    output_csv = str(resolve_project_path(args.output_csv))
     report_df = run_monitoring(
-        reference_csv=args.reference_csv,
-        current_csv=args.current_csv,
-        output_csv=args.output_csv,
+        reference_csv=reference_csv,
+        current_csv=current_csv,
+        output_csv=output_csv,
         features=features,
         bins=args.bins,
         warn_threshold=args.psi_warn,
@@ -181,7 +323,7 @@ def main() -> int:
         return 0
 
     status_counts = report_df["status"].value_counts().to_dict()
-    print(f"PSI report written to: {args.output_csv}")
+    print(f"PSI report written to: {output_csv}")
     print(f"Status summary: {status_counts}")
     print("Top 5 features by PSI:")
     print(report_df[["feature", "psi", "status"]].head(5).to_string(index=False))
