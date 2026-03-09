@@ -31,8 +31,8 @@ python monitoring/psi_monitor.py `
   --reference-csv $trainPath `
   --current-csv $testPath `
   --features amt,city_pop,unix_time `
-  --psi-warn 0.10 `
-  --psi-alert 0.25 `
+  --psi-warn 0.02 `
+  --psi-alert 0.05 `
   --output-csv monitoring/psi_report.csv
 ```
 
@@ -48,8 +48,8 @@ pip install kagglehub
 python monitoring/psi_monitor.py `
   --dataset-dir "C:\path\to\kagglehub\datasets\kartik2112\fraud-detection\versions\1" `
   --features amt,city_pop,unix_time `
-  --psi-warn 0.10 `
-  --psi-alert 0.25 `
+  --psi-warn 0.02 `
+  --psi-alert 0.05 `
   --output-csv monitoring/psi_report.csv
 ```
 
@@ -82,14 +82,22 @@ python monitoring/psi_monitor.py \
   --reference-csv Data/fraudTrain.csv \
   --current-csv Data/fraudTest.csv \
   --features amt,city_pop,unix_time \
-  --psi-warn 0.10 \
-  --psi-alert 0.25 \
+  --psi-warn 0.02 \
+  --psi-alert 0.05 \
   --output-csv monitoring/psi_report.csv
 ```
 
 Note: `hour`, `day_of_week`, `month`, `age`, `distance_km` are engineered features and do not exist in raw CSV files unless you created them first.
 
 If `--features` is omitted, the script uses all common numeric columns (except `is_fraud`).
+
+Default thresholds are now tuned for earlier drift detection:
+
+- `warn` from `0.02`
+- `alert` from `0.05`
+
+For segment-specific monitoring (for example by merchant category, region, or month),
+run the monitor separately per segment dataset and use thresholds adapted to that segment.
 
 ## Alerting mode
 

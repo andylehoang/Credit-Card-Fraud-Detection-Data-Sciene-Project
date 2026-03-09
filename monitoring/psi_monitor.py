@@ -248,8 +248,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated feature list. If omitted, common numeric features are used.",
     )
     parser.add_argument("--bins", type=int, default=10, help="Number of PSI bins")
-    parser.add_argument("--psi-warn", type=float, default=0.10, help="Warning threshold")
-    parser.add_argument("--psi-alert", type=float, default=0.25, help="Alert threshold")
+    parser.add_argument("--psi-warn", type=float, default=0.02, help="Warning threshold")
+    parser.add_argument("--psi-alert", type=float, default=0.05, help="Alert threshold")
     parser.add_argument(
         "--output-csv",
         default="monitoring/psi_report.csv",
