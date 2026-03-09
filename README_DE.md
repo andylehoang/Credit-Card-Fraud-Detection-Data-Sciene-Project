@@ -73,9 +73,9 @@ Unser Ergebnis: **PR-AUC = 0,8835** — bedeutet 88 % der Fläche unter der Prec
 ### Schritt 3 — Drift-Analyse (Train vs. Test)
 > 📌 **For Samuel**
 
-**Was ist eine „Verteilung"?** Eine Verteilung ist die Form der Werte eines Merkmals. Zum Beispiel häufen sich die meisten `amt`-Werte (Transaktionsbetrag) unter 100 $, aber einige steigen bis auf 28.000 $. Dieses Muster — wie Werte über den Bereich verteilt sind — ist die Verteilung.
+**Was ist eine „Verteilung"?** Eine Verteilung ist die Form der Werte eines Merkmals. Zum Beispiel häufen sich die meisten `amt`-Werte (Transaktionsbetrag) unter 100 USD, aber einige steigen bis auf 28.000 USD. Dieses Muster — wie Werte über den Bereich verteilt sind — ist die Verteilung.
 
-**Was ist Drift?** Drift liegt vor, wenn sich diese Form zwischen Trainings- und Testdaten ändert. Stell dir vor, das Modell hat aus Wintertrainingsdaten gelernt, dass „die meisten Transaktionen unter 50 $ liegen". Wenn der Testdatensatz die Weihnachtseinkaufszeit abdeckt, in der Käufe über 200 $ häufig sind, operiert das Modell jetzt in einer anderen Welt als in der, in der es trainiert wurde. Regeln, die aus einer Periode gelernt wurden, gelten möglicherweise nicht für eine andere.
+**Was ist Drift?** Drift liegt vor, wenn sich diese Form zwischen Trainings- und Testdaten ändert. Stell dir vor, das Modell hat aus Wintertrainingsdaten gelernt, dass „die meisten Transaktionen unter 50 USD liegen". Wenn der Testdatensatz die Weihnachtseinkaufszeit abdeckt, in der Käufe über 200 USD häufig sind, operiert das Modell jetzt in einer anderen Welt als in der, in der es trainiert wurde. Regeln, die aus einer Periode gelernt wurden, gelten möglicherweise nicht für eine andere.
 
 **Warum es wichtig ist:** Ein Modell, das in einer verschobenen Verteilung eingesetzt wird, macht systematisch falsche Vorhersagen — und versagt möglicherweise nicht offensichtlich. Drift-Analyse erkennt dies vor dem Einsatz. In diesem Projekt ist das einzige Merkmal mit hohem Drift `unix_time` (PSI = 11,51), was zu erwarten ist: Zeitstempel steigen natürlich im Laufe der Zeit. Alle bedeutsamen Merkmale (Beträge, Kategorien, Standorte) sind stabil.
 

@@ -73,9 +73,9 @@ Our result: **PR-AUC = 0.8835** — meaning 88% of the area under the precision-
 ### Step 3 — Drift Analysis (Train vs Test)
 > 📌 **For Samuel**
 
-**What is a "distribution"?** A distribution is the shape of a feature's values. For example, most `amt` (transaction amount) values cluster under $100, but a few spike up to $28,000. That pattern — how values are spread across the range — is the distribution.
+**What is a "distribution"?** A distribution is the shape of a feature's values. For example, most `amt` (transaction amount) values cluster under 100 USD, but a few spike up to 28,000 USD. That pattern — how values are spread across the range — is the distribution.
 
-**What is drift?** Drift is when that shape changes between training and test data. Imagine the model learned that "most transactions are under $50" from winter training data. If the test set covers holiday shopping where $200+ purchases are common, the model is now operating in a different world than it trained on. Rules learned from one period may not apply to another.
+**What is drift?** Drift is when that shape changes between training and test data. Imagine the model learned that "most transactions are under 50 USD from winter training data. If the test set covers holiday shopping where 200 USD+ purchases are common, the model is now operating in a different world than it trained on. Rules learned from one period may not apply to another.
 
 **Why it matters:** A model deployed into a shifted distribution makes systematically wrong predictions — and may not fail loudly. Drift analysis catches this before deployment. In this project, the only high-drift feature is `unix_time` (PSI = 11.51), which is expected: timestamps naturally advance over time. All meaningful features (amounts, categories, locations) are stable.
 
